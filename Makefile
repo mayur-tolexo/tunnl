@@ -3,9 +3,14 @@ CLIENT  := $(BIN_DIR)/tunnl
 RELAY   := $(BIN_DIR)/tunnld
 PORT    ?= 3000
 
+# Local dev defaults (plain HTTP, no TLS/GoDaddy)
+DEV_DOMAIN ?= localhost
+DEV_PORT   ?= 8088
+DEV_TOKEN  ?= devtoken
+
 .DEFAULT_GOAL := build
 
-.PHONY: build build-client build-relay install run-client run-relay test race vet fmt clean help
+.PHONY: build build-client build-relay install run-client run-relay dev-relay dev-client test race vet fmt clean help
 
 ## build: compile both binaries into ./bin
 build: build-client build-relay
@@ -29,6 +34,14 @@ run-client: build-client
 ##            requires TUNNL_TOKEN, TUNNL_DOMAIN, TUNNL_ACME_EMAIL, TUNNL_GODADDY_KEY/SECRET
 run-relay: build-relay
 	sudo -E $(RELAY)
+
+## dev-relay: run the relay locally over plain HTTP (no TLS/GoDaddy) on :$(DEV_PORT)
+dev-relay: build-relay
+	TUNNL_HTTP_ADDR=:$(DEV_PORT) TUNNL_DOMAIN=$(DEV_DOMAIN) TUNNL_TOKEN=$(DEV_TOKEN) $(RELAY)
+
+## dev-client: run the client against the local dev relay, e.g. make dev-client PORT=3000
+dev-client: build-client
+	TUNNL_RELAY=ws://tunnl.$(DEV_DOMAIN):$(DEV_PORT)/tunnel TUNNL_TOKEN=$(DEV_TOKEN) $(CLIENT) http $(PORT)
 
 ## test: run the test suite
 test:

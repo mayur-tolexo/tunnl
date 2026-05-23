@@ -46,3 +46,15 @@ func TestControlRejectsBadToken(t *testing.T) {
 		t.Fatalf("registry should be empty, got %d", reg.Count())
 	}
 }
+
+func TestControlPublicURL(t *testing.T) {
+	dev := NewControl(Config{BaseDomain: "localhost", PublicScheme: "http", PublicHostSuffix: ":8080"}, NewRegistry())
+	if got := dev.publicURL("happy-fox-0001"); got != "http://happy-fox-0001.localhost:8080" {
+		t.Fatalf("dev publicURL = %q", got)
+	}
+	// Empty PublicScheme defaults to https with no port suffix (production).
+	prod := NewControl(Config{BaseDomain: "shoplit.in"}, NewRegistry())
+	if got := prod.publicURL("happy-fox-0001"); got != "https://happy-fox-0001.shoplit.in" {
+		t.Fatalf("prod publicURL = %q", got)
+	}
+}

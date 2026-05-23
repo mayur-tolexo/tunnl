@@ -26,3 +26,17 @@ func TestRouterDispatchesByHost(t *testing.T) {
 		}
 	}
 }
+
+func TestPortSuffix(t *testing.T) {
+	cases := map[string]string{
+		":8080":          ":8080",
+		"127.0.0.1:8080": ":8080",
+		"8080":           "",
+		"":               "",
+	}
+	for in, want := range cases {
+		if got := portSuffix(in); got != want {
+			t.Errorf("portSuffix(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

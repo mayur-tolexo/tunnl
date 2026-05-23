@@ -16,6 +16,12 @@ type Config struct {
 	Token      string // shared static auth token
 	BaseDomain string // e.g. "example.com"
 	MaxTunnels int    // global cap on concurrent tunnels (0 = unlimited)
+	// PublicScheme is the URL scheme advertised to clients. Defaults to "https";
+	// local dev mode uses "http".
+	PublicScheme string
+	// PublicHostSuffix is appended to the public host, e.g. ":8080" in dev mode.
+	// Empty for the default ports (443/80).
+	PublicHostSuffix string
 }
 
 // Control is the WebSocket control handler. Clients connect here to register a
@@ -71,7 +77,7 @@ func (c *Control) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	out, _ := protocol.Encode(protocol.Message{
 		Type:       protocol.TypeRegistered,
-		Registered: &protocol.Registered{URL: "https://" + sub + "." + c.cfg.BaseDomain, Subdomain: sub},
+		Registered: &protocol.Registered{URL: c.publicURL(sub), Subdomain: sub},
 	})
 	if err := conn.Write(handshakeCtx, websocket.MessageBinary, out); err != nil {
 		c.reg.Remove(sub)
@@ -96,6 +102,15 @@ func (c *Control) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer c.reg.Remove(sub)
 
 	<-sess.CloseChan() // blocks until the session dies (yamux keepalive detects this)
+}
+
+// publicURL builds the public URL advertised to a client for its subdomain.
+func (c *Control) publicURL(sub string) string {
+	scheme := c.cfg.PublicScheme
+	if scheme == "" {
+		scheme = "https"
+	}
+	return scheme + "://" + sub + "." + c.cfg.BaseDomain + c.cfg.PublicHostSuffix
 }
 
 // assignSubdomain atomically reserves a free subdomain, retrying on collision.

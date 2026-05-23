@@ -31,6 +31,38 @@ make install        # go install into $GOBIN (e.g. ~/go/bin)
 
 Run `make help` to list all targets.
 
+## Try it locally (no TLS)
+
+Run the whole thing on one machine — no domain, certificates, or GoDaddy. The
+relay serves plain HTTP and hands out `*.localhost` URLs, which resolve to
+`127.0.0.1`.
+
+```sh
+# terminal 1 — relay on :8088 (plain HTTP, no TLS)
+make dev-relay
+
+# terminal 2 — whatever you want to expose, e.g. a static site on :3000
+python3 -m http.server 3000
+
+# terminal 3 — the tunnel client
+make dev-client PORT=3000
+```
+
+The client prints a URL like `http://jolly-owl-9288.localhost:8088`. Open it —
+requests are forwarded to `http://localhost:3000`.
+
+Override the defaults if `:8088` is taken (`DEV_PORT`), or for a different
+local port (`PORT`):
+
+```sh
+make dev-relay  DEV_PORT=9000
+make dev-client DEV_PORT=9000 PORT=5173
+```
+
+The relay and client share `DEV_TOKEN` (default `devtoken`). This mode is for
+local testing only — for a real public URL you need the relay deployed with TLS
+(below).
+
 ## Client usage
 
 ```sh

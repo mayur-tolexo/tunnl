@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,22 +17,31 @@ import (
 
 func main() {
 	cfg := relay.Config{
-		Token:      mustEnv("TUNNL_TOKEN"),
-		BaseDomain: mustEnv("TUNNL_DOMAIN"),
-		MaxTunnels: envInt("TUNNL_MAX_TUNNELS", 100),
+		Token:        mustEnv("TUNNL_TOKEN"),
+		BaseDomain:   mustEnv("TUNNL_DOMAIN"),
+		MaxTunnels:   envInt("TUNNL_MAX_TUNNELS", 100),
+		PublicScheme: "https",
 	}
+	reg := relay.NewRegistry()
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	// Local dev mode: serve plain HTTP and skip ACME/GoDaddy entirely.
+	// Set TUNNL_HTTP_ADDR (e.g. ":8080") to enable.
+	if devAddr := os.Getenv("TUNNL_HTTP_ADDR"); devAddr != "" {
+		runDev(ctx, cfg, reg, devAddr)
+		return
+	}
+
 	email := mustEnv("TUNNL_ACME_EMAIL")
 	gdKey := mustEnv("TUNNL_GODADDY_KEY")
 	gdSecret := mustEnv("TUNNL_GODADDY_SECRET")
 	staging := os.Getenv("TUNNL_ACME_STAGING") == "1"
 
-	reg := relay.NewRegistry()
 	control := relay.NewControl(cfg, reg)
 	forwarder := relay.NewForwarder(reg, cfg.BaseDomain)
 	router := newRouter(control, forwarder, "tunnl."+cfg.BaseDomain)
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	tlsCfg, err := relay.TLSConfig(ctx, cfg.BaseDomain, email, gdKey, gdSecret, staging)
 	if err != nil {
@@ -59,6 +69,42 @@ func main() {
 	defer cancel()
 	_ = httpsSrv.Shutdown(shutCtx)
 	_ = httpSrv.Shutdown(shutCtx)
+}
+
+// runDev serves the relay over plain HTTP for local testing, skipping ACME/TLS.
+// Public URLs are advertised as http://<sub>.<domain><:port>.
+func runDev(ctx context.Context, cfg relay.Config, reg *relay.Registry, addr string) {
+	cfg.PublicScheme = "http"
+	cfg.PublicHostSuffix = portSuffix(addr)
+
+	control := relay.NewControl(cfg, reg)
+	forwarder := relay.NewForwarder(reg, cfg.BaseDomain)
+	router := newRouter(control, forwarder, "tunnl."+cfg.BaseDomain)
+
+	srv := &http.Server{Addr: addr, Handler: router}
+	go func() {
+		log.Printf("tunnld: DEV mode (plain HTTP) on %s — public URLs http://<sub>.%s%s", addr, cfg.BaseDomain, cfg.PublicHostSuffix)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("tunnld: http server: %v", err)
+		}
+	}()
+
+	<-ctx.Done()
+	log.Println("tunnld: shutting down")
+	reg.CloseAll()
+	shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_ = srv.Shutdown(shutCtx)
+}
+
+// portSuffix returns ":port" from a listen address like ":8080" or
+// "127.0.0.1:8080", or "" when no port is present.
+func portSuffix(addr string) string {
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil || port == "" {
+		return ""
+	}
+	return ":" + port
 }
 
 // newRouter dispatches control-host traffic to control and everything else to
