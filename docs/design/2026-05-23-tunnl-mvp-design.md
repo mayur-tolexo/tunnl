@@ -132,18 +132,21 @@ GoDaddy **restricted its Domains API in 2024**: programmatic DNS access is now
 limited to accounts meeting domain-count / spend thresholds. The libdns/lego
 `godaddy` provider may therefore fail to write the `_acme-challenge` TXT record.
 
-**Mitigations, in order of preference:**
-1. **`acme-dns` delegation (recommended):** keep GoDaddy as registrar; add a
-   one-time `_acme-challenge.<domain>` CNAME pointing to a small self-hosted
-   `acme-dns` server. certmagic/lego solve DNS-01 against `acme-dns`, which has a
-   simple, reliable API. GoDaddy's restricted API is never touched.
+**Decision (2026-05-23):** proceed with the **direct GoDaddy DNS-01 provider**
+first — no DNS migration. Validate the GoDaddy API token works for this account
+as the first cert-related step; only if it is blocked, fall back to a mitigation
+below.
+
+**Fallbacks (only if the GoDaddy API token is blocked):**
+1. **`acme-dns` delegation:** keep GoDaddy as registrar; add a one-time
+   `_acme-challenge.<domain>` CNAME pointing to a small self-hosted `acme-dns`
+   server. certmagic/lego solve DNS-01 against `acme-dns`, which has a simple,
+   reliable API. GoDaddy's restricted API is never touched.
 2. **Delegate the zone to Cloudflare:** point the domain's nameservers (or a
    delegated subdomain) at Cloudflare and use the well-supported Cloudflare
    libdns plugin.
-3. **Verify the GoDaddy API token works** for this specific account before
-   committing to the direct GoDaddy provider.
 
-The implementation plan must validate which path works **before** building cert
+The implementation plan must validate the GoDaddy token **before** building cert
 automation, since it gates the whole HTTPS story.
 
 ## 8. Authentication (MVP)
@@ -183,8 +186,6 @@ and the connection is closed. No accounts, no per-user tokens in MVP.
 
 ## 11. Open questions / decisions to confirm during planning
 
-- Which GoDaddy mitigation path (Section 7) — confirm before building cert
-  automation.
 - Config file format/location for the client (e.g. `~/.config/tunnl/config`).
 - The `<domain>` to use for the relay's wildcard DNS.
 
