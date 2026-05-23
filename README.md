@@ -6,6 +6,33 @@ self-hosted on your own domain.
 This guide uses the domain **`shoplit.in`**. Public tunnel URLs will look like
 `https://happy-fox-0042.shoplit.in`.
 
+## Quick start
+
+**Locally, in 30 seconds** — no domain or certs (uses `*.localhost`):
+
+```sh
+make build
+python3 -m http.server 3000    # terminal 1: something to expose
+make dev-relay                 # terminal 2: relay on :8088
+make dev-client PORT=3000      # terminal 3: open the tunnel
+```
+
+The client prints `http://<name>.localhost:8088` — open it, and requests are
+forwarded to your `localhost:3000`. (If `:8088` is taken: `make dev-relay
+DEV_PORT=9000` and `make dev-client DEV_PORT=9000 PORT=3000`.)
+
+**On your own domain** — a real public `https://<name>.shoplit.in`. Deploy the
+relay to a small VPS once (≈25 min, ~$4/mo or free), following
+**[deploy/README.md](deploy/README.md)**. Then from your machine:
+
+```sh
+export TUNNL_RELAY=wss://tunnl.shoplit.in/tunnel
+export TUNNL_TOKEN=<token from the relay>
+tunnl http 3000                # -> https://happy-fox-0042.shoplit.in
+```
+
+The rest of this document explains each piece in detail.
+
 ## How it works
 
 A small client on your machine opens one outbound WebSocket to a relay you run
