@@ -1,0 +1,25 @@
+[Unit]
+Description=tunnl relay (tunnld)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Secrets and config live here (see tunnld.env.example). chmod 600.
+EnvironmentFile=/etc/tunnl/tunnld.env
+ExecStart=/usr/local/bin/tunnld
+
+# Run unprivileged but allow binding :80/:443.
+DynamicUser=yes
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+# Persist issued certificates across restarts. certmagic stores them under
+# $XDG_DATA_HOME/certmagic; StateDirectory creates /var/lib/tunnl owned by the
+# dynamic user.
+StateDirectory=tunnl
+Environment=XDG_DATA_HOME=/var/lib/tunnl
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

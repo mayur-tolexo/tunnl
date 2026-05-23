@@ -10,6 +10,7 @@
 
 # Build output
 /bin/
+/tunnld-linux
 
 # acme-dns runtime state (registered accounts, sqlite db)
 /deploy/acme-dns/data/
