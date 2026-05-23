@@ -16,7 +16,7 @@ func TestSubdomainFromHost(t *testing.T) {
 	}{
 		{"happy-fox-0001.example.com", "example.com", "happy-fox-0001", true},
 		{"happy-fox-0001.example.com:443", "example.com", "happy-fox-0001", true},
-		{"example.com", "example.com", "", false},          // apex, no subdomain
+		{"example.com", "example.com", "", false},           // apex, no subdomain
 		{"tunnl.example.com", "example.com", "tunnl", true}, // reserved host handled by caller
 		{"evil.com", "example.com", "", false},              // wrong base domain
 	}

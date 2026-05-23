@@ -56,3 +56,14 @@ func (r *Registry) Count() int {
 	defer r.mu.RUnlock()
 	return len(r.tunnels)
 }
+
+// AnySubdomain returns one registered subdomain, or "" if none. Intended for
+// tests and diagnostics.
+func (r *Registry) AnySubdomain() string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for s := range r.tunnels {
+		return s
+	}
+	return ""
+}
