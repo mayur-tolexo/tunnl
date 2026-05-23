@@ -169,9 +169,11 @@ and the connection is closed. No accounts, no per-user tokens in MVP.
 - Graceful shutdown drains active sessions.
 
 **Light guardrails (still in MVP, to prevent trivial abuse)**
-- Max concurrent tunnels per token.
-- Max request body size.
-- Idle-tunnel timeout.
+- Max concurrent tunnels (global cap; equivalent to per-token under the single
+  shared token).
+- Max request body size (best-effort cap at the relay).
+- Dead-tunnel detection via yamux keepalive (registry entry removed when the
+  client connection dies). Reaping idle-but-alive tunnels is deferred.
 
 ## 10. Testing strategy
 
@@ -198,3 +200,4 @@ Each becomes its own brainstorm → spec → plan cycle:
 4. Custom / reserved subdomains + persistence across restarts.
 5. Raw TCP tunnels.
 6. Multi-region relays, metrics, billing.
+7. Idle-but-alive tunnel reaping and per-tunnel quotas.
