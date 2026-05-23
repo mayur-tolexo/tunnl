@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -12,6 +13,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/caddyserver/certmagic"
+	"github.com/libdns/acmedns"
+	"github.com/libdns/godaddy"
 	"github.com/mayur-tolexo/tunnl/internal/relay"
 )
 
@@ -35,15 +39,17 @@ func main() {
 	}
 
 	email := mustEnv("TUNNL_ACME_EMAIL")
-	gdKey := mustEnv("TUNNL_GODADDY_KEY")
-	gdSecret := mustEnv("TUNNL_GODADDY_SECRET")
 	staging := os.Getenv("TUNNL_ACME_STAGING") == "1"
+	dns, err := dnsProviderFromEnv()
+	if err != nil {
+		log.Fatalf("tunnld: DNS provider config: %v", err)
+	}
 
 	control := relay.NewControl(cfg, reg)
 	forwarder := relay.NewForwarder(reg, cfg.BaseDomain)
 	router := newRouter(control, forwarder, "tunnl."+cfg.BaseDomain)
 
-	tlsCfg, err := relay.TLSConfig(ctx, cfg.BaseDomain, email, gdKey, gdSecret, staging)
+	tlsCfg, err := relay.TLSConfig(ctx, cfg.BaseDomain, email, staging, dns)
 	if err != nil {
 		log.Fatalf("tunnld: TLS setup failed: %v", err)
 	}
@@ -125,6 +131,41 @@ func newRouter(control, forwarder http.Handler, controlHost string) http.Handler
 
 func redirectToHTTPS(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "https://"+r.Host+r.URL.RequestURI(), http.StatusMovedPermanently)
+}
+
+// dnsProviderFromEnv builds the libdns DNS provider used to solve the ACME
+// DNS-01 challenge, selected by TUNNL_DNS_PROVIDER (default "godaddy"). Use
+// "acmedns" to delegate the challenge to a self-hosted acme-dns server when the
+// registrar's API cannot write records (e.g. GoDaddy's gated Domains API).
+func dnsProviderFromEnv() (certmagic.DNSProvider, error) {
+	switch kind := envOr("TUNNL_DNS_PROVIDER", "godaddy"); kind {
+	case "godaddy":
+		key, secret := os.Getenv("TUNNL_GODADDY_KEY"), os.Getenv("TUNNL_GODADDY_SECRET")
+		if key == "" || secret == "" {
+			return nil, fmt.Errorf("godaddy provider requires TUNNL_GODADDY_KEY and TUNNL_GODADDY_SECRET")
+		}
+		return &godaddy.Provider{APIToken: key + ":" + secret}, nil
+	case "acmedns":
+		p := &acmedns.Provider{
+			ServerURL: os.Getenv("TUNNL_ACMEDNS_SERVER"),
+			Username:  os.Getenv("TUNNL_ACMEDNS_USERNAME"),
+			Password:  os.Getenv("TUNNL_ACMEDNS_PASSWORD"),
+			Subdomain: os.Getenv("TUNNL_ACMEDNS_SUBDOMAIN"),
+		}
+		if p.ServerURL == "" || p.Username == "" || p.Password == "" || p.Subdomain == "" {
+			return nil, fmt.Errorf("acmedns provider requires TUNNL_ACMEDNS_SERVER, TUNNL_ACMEDNS_USERNAME, TUNNL_ACMEDNS_PASSWORD and TUNNL_ACMEDNS_SUBDOMAIN")
+		}
+		return p, nil
+	default:
+		return nil, fmt.Errorf("unknown TUNNL_DNS_PROVIDER %q (want \"godaddy\" or \"acmedns\")", kind)
+	}
+}
+
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }
 
 func mustEnv(key string) string {

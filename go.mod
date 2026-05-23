@@ -3,12 +3,16 @@ module github.com/mayur-tolexo/tunnl
 go 1.26.2
 
 require (
-	github.com/caddyserver/certmagic v0.25.3 // indirect
+	github.com/caddyserver/certmagic v0.25.3
+	github.com/coder/websocket v1.8.14
+	github.com/hashicorp/yamux v0.1.2
+	github.com/libdns/acmedns v0.5.0
+	github.com/libdns/godaddy v1.1.0
+)
+
+require (
 	github.com/caddyserver/zerossl v0.1.5 // indirect
-	github.com/coder/websocket v1.8.14 // indirect
-	github.com/hashicorp/yamux v0.1.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
-	github.com/libdns/godaddy v1.1.0 // indirect
 	github.com/libdns/libdns v1.1.1 // indirect
 	github.com/mholt/acmez/v3 v3.1.6 // indirect
 	github.com/miekg/dns v1.1.72 // indirect

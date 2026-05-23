@@ -1,0 +1,13 @@
+services:
+  acme-dns:
+    image: joohoi/acme-dns:latest
+    restart: unless-stopped
+    ports:
+      # Public authoritative DNS for the delegated zone (Let's Encrypt queries this).
+      - "53:53/udp"
+      - "53:53/tcp"
+      # REST API — bound to localhost only; the relay reaches it at http://127.0.0.1:8081.
+      - "127.0.0.1:8081:8081"
+    volumes:
+      - ./config.cfg:/etc/acme-dns/config.cfg:ro
+      - ./data:/var/lib/acme-dns

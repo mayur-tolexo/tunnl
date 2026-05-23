@@ -6,14 +6,13 @@ import (
 	"fmt"
 
 	"github.com/caddyserver/certmagic"
-	"github.com/libdns/godaddy"
 )
 
 // TLSConfig obtains (or loads from cache) a wildcard certificate for
 // *.baseDomain and baseDomain via the Let's Encrypt DNS-01 challenge, solved
-// through GoDaddy. The returned *tls.Config serves every subdomain from the one
-// wildcard cert.
-func TLSConfig(ctx context.Context, baseDomain, email, gdKey, gdSecret string, staging bool) (*tls.Config, error) {
+// through the supplied libdns DNS provider (e.g. GoDaddy or acme-dns). The
+// returned *tls.Config serves every subdomain from the one wildcard cert.
+func TLSConfig(ctx context.Context, baseDomain, email string, staging bool, dns certmagic.DNSProvider) (*tls.Config, error) {
 	certmagic.DefaultACME.Agreed = true
 	certmagic.DefaultACME.Email = email
 	if staging {
@@ -22,9 +21,7 @@ func TLSConfig(ctx context.Context, baseDomain, email, gdKey, gdSecret string, s
 		certmagic.DefaultACME.CA = certmagic.LetsEncryptProductionCA
 	}
 	certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
-		DNSManager: certmagic.DNSManager{
-			DNSProvider: &godaddy.Provider{APIToken: gdKey + ":" + gdSecret},
-		},
+		DNSManager: certmagic.DNSManager{DNSProvider: dns},
 	}
 
 	magic := certmagic.NewDefault()

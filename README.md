@@ -112,15 +112,25 @@ makes every random tunnel subdomain resolve to the relay.
 | `TUNNL_TOKEN` | shared auth token clients must present |
 | `TUNNL_DOMAIN` | base domain — `shoplit.in` |
 | `TUNNL_ACME_EMAIL` | Let's Encrypt account email |
-| `TUNNL_GODADDY_KEY` / `TUNNL_GODADDY_SECRET` | GoDaddy API key/secret for the DNS-01 challenge |
+| `TUNNL_DNS_PROVIDER` | DNS-01 provider: `godaddy` (default) or `acmedns` |
+| `TUNNL_GODADDY_KEY` / `TUNNL_GODADDY_SECRET` | GoDaddy API key/secret (when provider is `godaddy`) |
+| `TUNNL_ACMEDNS_SERVER` / `_USERNAME` / `_PASSWORD` / `_SUBDOMAIN` | acme-dns account (when provider is `acmedns` — see [deploy/acme-dns](deploy/acme-dns/README.md)) |
 | `TUNNL_MAX_TUNNELS` | optional, max concurrent tunnels (default 100) |
 | `TUNNL_ACME_STAGING` | set to `1` to use the Let's Encrypt **staging** CA |
+
+> **GoDaddy's API is gated (2024).** Programmatic DNS edits now require accounts
+> meeting a domain-count/spend threshold; smaller accounts get
+> `UNABLE_TO_AUTHENTICATE`. If `godaddy` fails, use `TUNNL_DNS_PROVIDER=acmedns` —
+> a self-hosted acme-dns server needs only a **one-time** CNAME at GoDaddy and no
+> ongoing API access. Full runbook: **[deploy/acme-dns/README.md](deploy/acme-dns/README.md)**.
 
 ### 3. First run — validate certs against staging
 
 The relay obtains one wildcard certificate for `*.shoplit.in` via the Let's
-Encrypt DNS-01 challenge, solved through the GoDaddy API. **Always test against
-the staging CA first** so a misconfiguration doesn't burn production rate limits:
+Encrypt DNS-01 challenge, solved through the configured DNS provider (GoDaddy
+below; acme-dns in [deploy/acme-dns](deploy/acme-dns/README.md)). **Always test
+against the staging CA first** so a misconfiguration doesn't burn production
+rate limits:
 
 ```sh
 export TUNNL_TOKEN=$(openssl rand -hex 16)
@@ -147,13 +157,8 @@ make run-relay
 Verify: `curl -sSf https://tunnl.shoplit.in -o /dev/null` (a 404 with a valid TLS
 handshake is fine — it means the cert works).
 
-> **GoDaddy API note:** GoDaddy restricted its Domains API in 2024 (programmatic
-> DNS access requires accounts meeting a domain-count/spend threshold). If the
-> DNS-01 challenge fails with a 403/authorization error, your key can't write
-> records. Fallback: keep GoDaddy as registrar but add a one-time
-> `_acme-challenge.shoplit.in` CNAME pointing at a self-hosted
-> [acme-dns](https://github.com/joohoi/acme-dns) server, or delegate the zone to
-> a provider with an open API. See `docs/design/2026-05-23-tunnl-mvp-design.md` §7.
+For `shoplit.in` specifically, GoDaddy's API is gated, so use the acme-dns
+provider: **[deploy/acme-dns/README.md](deploy/acme-dns/README.md)**.
 
 `sudo` is required to bind ports 80/443 (or grant the binary
 `CAP_NET_BIND_SERVICE` / front it with a reverse proxy).

@@ -11,6 +11,10 @@
 # Build output
 /bin/
 
+# acme-dns runtime state (registered accounts, sqlite db)
+/deploy/acme-dns/data/
+/deploy/acme-dns/account.json
+
 # Test binary, built with `go test -c`
 *.test
 
