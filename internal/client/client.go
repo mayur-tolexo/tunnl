@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -112,6 +113,7 @@ func handleStream(stream net.Conn, localPort int) {
 	}
 	req.URL.Scheme = "http"
 	req.URL.Host = fmt.Sprintf("localhost:%d", localPort)
+	req.Host = ""       // clear so local service receives localhost:<port>, not the public subdomain
 	req.RequestURI = "" // must be cleared for client-side requests
 
 	resp, err := http.DefaultTransport.RoundTrip(req)
@@ -120,7 +122,9 @@ func handleStream(stream net.Conn, localPort int) {
 		return
 	}
 	defer resp.Body.Close()
-	_ = resp.Write(stream)
+	if err := resp.Write(stream); err != nil {
+		log.Printf("tunnl: write response to relay stream: %v", err)
+	}
 }
 
 func writeBadGateway(w io.Writer) {

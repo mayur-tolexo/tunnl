@@ -2,6 +2,7 @@ package relay
 
 import (
 	"net"
+	"strconv"
 	"sync"
 	"testing"
 )
@@ -47,7 +48,7 @@ func TestRegistryConcurrentAdd(t *testing.T) {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			r.TryAdd(GenerateName(n), &fakeTunnel{})
+			r.TryAdd(generateName(n), &fakeTunnel{})
 		}(i)
 	}
 	wg.Wait()
@@ -56,17 +57,67 @@ func TestRegistryConcurrentAdd(t *testing.T) {
 	}
 }
 
-// GenerateName is a deterministic helper for the concurrency test.
-func GenerateName(n int) string { return "sub-" + string(rune('a'+n%26)) + "-" + itoa(n) }
+func TestTryReserve(t *testing.T) {
+	t.Run("duplicate rejected", func(t *testing.T) {
+		r := NewRegistry()
+		if !r.TryReserve("sub-a", &fakeTunnel{}, 0) {
+			t.Fatal("first TryReserve should succeed")
+		}
+		if r.TryReserve("sub-a", &fakeTunnel{}, 0) {
+			t.Fatal("duplicate TryReserve should fail")
+		}
+	})
 
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var b []byte
-	for n > 0 {
-		b = append([]byte{byte('0' + n%10)}, b...)
-		n /= 10
-	}
-	return string(b)
+	t.Run("cap enforced at limit", func(t *testing.T) {
+		r := NewRegistry()
+		if !r.TryReserve("sub-1", &fakeTunnel{}, 1) {
+			t.Fatal("first entry under cap should succeed")
+		}
+		if r.TryReserve("sub-2", &fakeTunnel{}, 1) {
+			t.Fatal("second entry at cap should fail")
+		}
+	})
+
+	t.Run("cap of 0 is unlimited", func(t *testing.T) {
+		r := NewRegistry()
+		for i := 0; i < 100; i++ {
+			if !r.TryReserve("sub-"+strconv.Itoa(i), &fakeTunnel{}, 0) {
+				t.Fatalf("TryReserve(%d) with max=0 should always succeed", i)
+			}
+		}
+	})
 }
+
+func TestReplace(t *testing.T) {
+	t.Run("succeeds when old matches", func(t *testing.T) {
+		r := NewRegistry()
+		old := &fakeTunnel{}
+		new := &fakeTunnel{}
+		r.TryAdd("sub-x", old)
+		if !r.Replace("sub-x", old, new) {
+			t.Fatal("Replace should succeed when old matches")
+		}
+		got, _ := r.Get("sub-x")
+		if got != new {
+			t.Fatal("Get should return new tunnel after Replace")
+		}
+	})
+
+	t.Run("fails when old does not match", func(t *testing.T) {
+		r := NewRegistry()
+		actual := &fakeTunnel{}
+		other := &fakeTunnel{}
+		new := &fakeTunnel{}
+		r.TryAdd("sub-y", actual)
+		if r.Replace("sub-y", other, new) {
+			t.Fatal("Replace should fail when old does not match current")
+		}
+		got, _ := r.Get("sub-y")
+		if got != actual {
+			t.Fatal("Get should still return original tunnel after failed Replace")
+		}
+	})
+}
+
+// generateName is a deterministic helper for the concurrency test.
+func generateName(n int) string { return "sub-" + string(rune('a'+n%26)) + "-" + strconv.Itoa(n) }

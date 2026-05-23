@@ -67,3 +67,48 @@ func (r *Registry) AnySubdomain() string {
 	}
 	return ""
 }
+
+// TryReserve atomically adds t under subdomain if and only if the subdomain is
+// not already taken AND the cap is not exceeded. max <= 0 means unlimited.
+// Returns true if the entry was added.
+func (r *Registry) TryReserve(subdomain string, t Tunnel, max int) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, exists := r.tunnels[subdomain]; exists {
+		return false
+	}
+	if max > 0 && len(r.tunnels) >= max {
+		return false
+	}
+	r.tunnels[subdomain] = t
+	return true
+}
+
+// Replace atomically replaces the entry for subdomain if the current value
+// equals old. Returns true if the swap was performed.
+func (r *Registry) Replace(subdomain string, old, new Tunnel) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	cur, exists := r.tunnels[subdomain]
+	if !exists || cur != old {
+		return false
+	}
+	r.tunnels[subdomain] = new
+	return true
+}
+
+// CloseAll removes every tunnel from the registry and calls Close on each.
+// The lock is not held during the Close calls.
+func (r *Registry) CloseAll() {
+	r.mu.Lock()
+	snapshot := make([]Tunnel, 0, len(r.tunnels))
+	for _, t := range r.tunnels {
+		snapshot = append(snapshot, t)
+	}
+	r.tunnels = make(map[string]Tunnel)
+	r.mu.Unlock()
+
+	for _, t := range snapshot {
+		t.Close()
+	}
+}

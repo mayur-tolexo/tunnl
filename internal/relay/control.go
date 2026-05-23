@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/coder/websocket"
 	"github.com/hashicorp/yamux"
@@ -37,29 +38,34 @@ func (c *Control) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// yamux frames can exceed the default 32KiB message read limit.
 	conn.SetReadLimit(1 << 30)
 
-	ctx := context.Background()
-	_, data, err := conn.Read(ctx)
+	// Handshake phase: bounded by a 10s timeout so a client that connects but
+	// never sends Register cannot leak a goroutine forever.
+	handshakeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, data, err := conn.Read(handshakeCtx)
 	if err != nil {
 		conn.Close(websocket.StatusProtocolError, "expected register")
 		return
 	}
 	msg, err := protocol.Decode(data)
 	if err != nil || msg.Type != protocol.TypeRegister || msg.Register == nil {
-		c.writeError(ctx, conn, "bad_request", "expected register message")
+		c.writeError(handshakeCtx, conn, "bad_request", "expected register message")
 		return
 	}
 	if msg.Register.Token != c.cfg.Token {
-		c.writeError(ctx, conn, "unauthorized", "invalid token")
+		c.writeError(handshakeCtx, conn, "unauthorized", "invalid token")
 		return
 	}
+	// Best-effort friendly early check; correctness is enforced atomically in assignSubdomain.
 	if c.cfg.MaxTunnels > 0 && c.reg.Count() >= c.cfg.MaxTunnels {
-		c.writeError(ctx, conn, "capacity", "tunnel capacity reached")
+		c.writeError(handshakeCtx, conn, "capacity", "tunnel capacity reached")
 		return
 	}
 
 	sub, ok := c.assignSubdomain()
 	if !ok {
-		c.writeError(ctx, conn, "internal", "could not assign subdomain")
+		c.writeError(handshakeCtx, conn, "internal", "could not assign subdomain")
 		return
 	}
 
@@ -67,21 +73,23 @@ func (c *Control) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Type:       protocol.TypeRegistered,
 		Registered: &protocol.Registered{URL: "https://" + sub + "." + c.cfg.BaseDomain, Subdomain: sub},
 	})
-	if err := conn.Write(ctx, websocket.MessageBinary, out); err != nil {
+	if err := conn.Write(handshakeCtx, websocket.MessageBinary, out); err != nil {
 		c.reg.Remove(sub)
 		return
 	}
 
-	netConn := websocket.NetConn(ctx, conn, websocket.MessageBinary)
+	// Session phase: use a long-lived context independent of the handshake
+	// timeout so the session is not killed when the 10s deadline fires.
+	sessCtx := context.Background()
+	netConn := websocket.NetConn(sessCtx, conn, websocket.MessageBinary)
 	sess, err := yamux.Client(netConn, yamuxConfig())
 	if err != nil {
 		c.reg.Remove(sub)
 		conn.Close(websocket.StatusInternalError, "yamux setup failed")
 		return
 	}
-	// Replace the placeholder reservation with the real yamux-backed tunnel.
-	c.reg.Remove(sub)
-	if !c.reg.TryAdd(sub, &yamuxTunnel{sess: sess}) {
+	// Atomically promote the placeholder reservation to the live tunnel.
+	if !c.reg.Replace(sub, reservation{}, &yamuxTunnel{sess: sess}) {
 		sess.Close()
 		return
 	}
@@ -90,14 +98,15 @@ func (c *Control) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	<-sess.CloseChan() // blocks until the session dies (yamux keepalive detects this)
 }
 
-// assignSubdomain reserves a free subdomain, retrying on collision.
+// assignSubdomain atomically reserves a free subdomain, retrying on collision.
+// The MaxTunnels cap is enforced atomically with the insert via TryReserve.
 func (c *Control) assignSubdomain() (string, bool) {
 	for i := 0; i < 10; i++ {
 		s, err := GenerateSubdomain()
 		if err != nil {
 			return "", false
 		}
-		if c.reg.TryAdd(s, reservation{}) {
+		if c.reg.TryReserve(s, reservation{}, c.cfg.MaxTunnels) {
 			return s, true
 		}
 	}
