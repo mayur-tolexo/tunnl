@@ -17,13 +17,33 @@ ports, works behind NAT/firewalls.
 visitor ──HTTPS──▶ tunnl.shoplit.in relay ──WSS/yamux──▶ tunnl client ──HTTP──▶ localhost:3000
 ```
 
+## Build
+
+```sh
+make build          # compiles ./bin/tunnl (client) and ./bin/tunnld (relay)
+```
+
+Or put both binaries on your `PATH`:
+
+```sh
+make install        # go install into $GOBIN (e.g. ~/go/bin)
+```
+
+Run `make help` to list all targets.
+
 ## Client usage
 
 ```sh
 export TUNNL_RELAY=wss://tunnl.shoplit.in/tunnel
 export TUNNL_TOKEN=<shared-token>      # must match the relay's TUNNL_TOKEN
 
-tunnl http 3000
+./bin/tunnl http 3000                  # or `tunnl http 3000` after `make install`
+```
+
+Or via the Makefile (reads the same env vars):
+
+```sh
+make run-client PORT=3000
 ```
 
 Output:
@@ -35,12 +55,6 @@ tunnl: https://happy-fox-0042.shoplit.in -> http://localhost:3000
 Share that URL — requests to it are served by whatever is running on
 `http://localhost:3000`. The subdomain is random and lasts for the life of the
 client connection.
-
-Build the client:
-
-```sh
-go build -o tunnl ./cmd/tunnl
-```
 
 ## Running the relay (`tunnld`)
 
@@ -84,16 +98,18 @@ export TUNNL_GODADDY_KEY=<godaddy-key>
 export TUNNL_GODADDY_SECRET=<godaddy-secret>
 export TUNNL_ACME_STAGING=1
 
-go build -o tunnld ./cmd/tunnld
-sudo -E ./tunnld          # binds :80 (redirect) and :443
+make run-relay            # builds ./bin/tunnld and runs `sudo -E ./bin/tunnld`
 ```
+
+`make run-relay` binds :80 (redirect) and :443, so it runs under `sudo` and
+inherits the exported env (`sudo -E`).
 
 Watch the logs for a solved DNS-01 challenge and `:443 listening`. Once staging
 works, drop `TUNNL_ACME_STAGING` and run again to obtain a real certificate:
 
 ```sh
 unset TUNNL_ACME_STAGING
-sudo -E ./tunnld
+make run-relay
 ```
 
 Verify: `curl -sSf https://tunnl.shoplit.in -o /dev/null` (a 404 with a valid TLS
