@@ -91,9 +91,12 @@ func mustEnv(key string) string {
 
 func envInt(key string, def int) int {
 	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			return n
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			log.Printf("tunnld: %s=%q is not an integer, using default %d", key, v, def)
+			return def
 		}
+		return n
 	}
 	return def
 }
